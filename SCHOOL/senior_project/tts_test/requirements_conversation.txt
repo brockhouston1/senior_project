@@ -1,0 +1,4 @@
+openai>=1.0.0
+SpeechRecognition>=3.8.1
+pygame>=2.5.0
+PyAudio>=0.2.11 

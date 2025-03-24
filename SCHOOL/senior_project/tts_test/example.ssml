@@ -1,0 +1,14 @@
+<speak>
+    Welcome to our meditation session.
+    <break time="1s"/>
+    Let's begin by taking a deep breath.
+    <prosody rate="slow" >
+        Breathe in slowly
+        <break time="2s"/>
+        And breathe out
+    </prosody>
+    <break time="1s"/>
+    <prosody rate="medium">
+        Feel the calm spreading through your body
+    </prosody>
+</speak> 
