@@ -3,7 +3,23 @@ import AudioPlaybackService from './AudioPlaybackService';
 import APIService from './APIService';
 import * as FileSystem from 'expo-file-system';
 import { Audio } from 'expo-av';
-import { Alert } from 'react-native';
+import { Alert, Platform } from 'react-native';
+
+// Helper to get the correct server URL based on platform
+const getServerUrl = () => {
+  if (__DEV__) {
+    // Use localhost for iOS simulators
+    if (Platform.OS === 'ios') {
+      return 'http://localhost:5001';
+    }
+    // Use 10.0.2.2 for Android emulators (special IP that routes to host machine's localhost)
+    else if (Platform.OS === 'android') {
+      return 'http://10.0.2.2:5001';
+    }
+  }
+  // Production endpoint
+  return 'http://144.38.136.80:5001';
+};
 
 // Voice assistant states
 export const VoiceState = {
@@ -25,6 +41,7 @@ class VoiceStateManager {
     this.safetyTimeout = null;
     this.isConnecting = false;
     this.isFirstPlayback = true;
+    this.serverUrl = getServerUrl();
     
     // Set up playback completion handler
     AudioPlaybackService.onPlaybackComplete = () => {
@@ -94,7 +111,7 @@ class VoiceStateManager {
    */
   async checkBackendConnection() {
     try {
-      const response = await fetch('http://144.38.136.80:5001/api/openai/health');
+      const response = await fetch(`${this.serverUrl}/api/health`);
       if (!response.ok) {
         throw new Error(`Backend not ready (${response.status})`);
       }
@@ -120,10 +137,10 @@ class VoiceStateManager {
     // Check immediately
     this.checkBackendConnection();
     
-    // Then check every 5 seconds
+    // Then check every 30 seconds (changed from 5 seconds)
     this.connectionCheckInterval = setInterval(() => {
       this.checkBackendConnection();
-    }, 5000);
+    }, 30000);
   }
 
   /**

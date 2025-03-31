@@ -5,6 +5,7 @@ import { SessionsScreen } from '../screens/SessionsScreen';
 import { MeditateScreen } from '../screens/MeditateScreen';
 import { BreathingScreen } from '../screens/BreathingScreen';
 import { GroundingScreen } from '../screens/GroundingScreen';
+import WebRTCDemoScreen from '../screens/WebRTCDemoScreen';
 
 const Drawer = createDrawerNavigator();
 
@@ -31,7 +32,7 @@ export const DrawerNavigator = () => {
         name="Home" 
         component={HomeScreen}
         options={{
-          drawerLabel: 'Home',
+          drawerLabel: 'Voice Assistant',
         }}
       />
       <Drawer.Screen 
@@ -60,6 +61,13 @@ export const DrawerNavigator = () => {
         component={GroundingScreen}
         options={{
           drawerLabel: 'Grounding',
+        }}
+      />
+      <Drawer.Screen 
+        name="WebRTCDemo" 
+        component={WebRTCDemoScreen}
+        options={{
+          drawerLabel: 'WebRTC Demo',
         }}
       />
     </Drawer.Navigator>

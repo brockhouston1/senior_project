@@ -4,11 +4,12 @@
   "main": "index.ts",
   "scripts": {
     "start": "expo start",
-    "android": "expo start --android",
-    "ios": "expo start --ios",
+    "android": "expo run:android",
+    "ios": "expo run:ios",
     "web": "expo start --web"
   },
   "dependencies": {
+    "@config-plugins/react-native-webrtc": "^10.0.0",
     "@react-native-async-storage/async-storage": "^2.1.2",
     "@react-native-voice/voice": "^3.2.4",
     "@react-navigation/drawer": "^7.1.1",
@@ -16,6 +17,7 @@
     "base64-js": "^1.5.1",
     "expo": "~52.0.28",
     "expo-av": "^15.0.2",
+    "expo-dev-client": "^5.0.15",
     "expo-file-system": "~18.0.11",
     "expo-speech-recognition": "^1.1.1",
     "expo-status-bar": "~2.0.1",
@@ -24,7 +26,9 @@
     "react-native-gesture-handler": "^2.22.1",
     "react-native-reanimated": "^3.16.7",
     "react-native-safe-area-context": "^5.1.0",
-    "react-native-screens": "^4.6.0"
+    "react-native-screens": "^4.6.0",
+    "react-native-webrtc": "^124.0.5",
+    "socket.io-client": "^4.8.1"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
