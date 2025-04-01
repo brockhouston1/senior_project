@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Alert, Animated, Modal, ScrollView } from 'react-native';
 import { DrawerNavigationProp } from '@react-navigation/drawer';
+import { LinearGradient } from 'expo-linear-gradient';
 import VoiceStateManager, { VoiceState } from '../services/VoiceStateManager';
 import APIService from '../services/APIService';
 import AudioPlaybackService from '../services/AudioPlaybackService';
@@ -32,13 +33,16 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
   // Animation value for button pulse
   const buttonPulseAnimation = useRef(new Animated.Value(1)).current;
   
+  // Animation values for waveform
+  const waveforms = Array.from({ length: 7 }, (_, i) => useRef(new Animated.Value(0.3)).current);
+  
   // Initialize app
   useEffect(() => {
     const initializeApp = async () => {
       try {
         setIsConnecting(true);
         await VoiceStateManager.activate();
-      setAppReady(true);
+        setAppReady(true);
       } catch (error) {
         console.error('Failed to initialize app:', error);
         Alert.alert(
@@ -69,44 +73,57 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
 
     VoiceStateManager.addListener(handleStateChange);
 
+    // Listen for response from API
+    APIService.on('response', (data: any) => {
+      if (data && data.text) {
+        // Store the response text but don't display during interaction
+        setResponseText(data.text);
+      }
+    });
+
     // Cleanup
     return () => {
       VoiceStateManager.removeListener(handleStateChange);
       VoiceStateManager.deactivate();
+      APIService.off('response', () => {});
     };
   }, []);
   
   const toggleHistory = async () => {
     if (!showHistory) {
-      // Get the current history from APIService
-      setConversationHistory(APIService.conversationHistory);
+      // Get the current history from APIService and ensure it matches our Message type
+      const history = APIService.conversationHistory.map(item => ({
+        role: item.role === 'user' || item.role === 'assistant' ? item.role : 'user',
+        content: item.content
+      })) as Message[];
+      setConversationHistory(history);
     }
     setShowHistory(!showHistory);
   };
 
   const startDotAnimation = () => {
-        dot1Animation.setValue(0);
-        dot2Animation.setValue(0);
-        dot3Animation.setValue(0);
-        
-        Animated.sequence([
-          Animated.timing(dot1Animation, {
-            toValue: 1,
-            duration: 400,
-            useNativeDriver: true
-          }),
-          Animated.timing(dot2Animation, {
-            toValue: 1,
-            duration: 400,
-            useNativeDriver: true
-          }),
-          Animated.timing(dot3Animation, {
-            toValue: 1,
-            duration: 400,
-            useNativeDriver: true
-          })
-        ]).start(() => {
-      if (VoiceStateManager.state === VoiceState.LISTENING) {
+    dot1Animation.setValue(0);
+    dot2Animation.setValue(0);
+    dot3Animation.setValue(0);
+    
+    Animated.sequence([
+      Animated.timing(dot1Animation, {
+        toValue: 1,
+        duration: 400,
+        useNativeDriver: true
+      }),
+      Animated.timing(dot2Animation, {
+        toValue: 1,
+        duration: 400,
+        useNativeDriver: true
+      }),
+      Animated.timing(dot3Animation, {
+        toValue: 1,
+        duration: 400,
+        useNativeDriver: true
+      })
+    ]).start(() => {
+      if (state === VoiceState.LISTENING) {
         startDotAnimation();
       }
     });
@@ -118,9 +135,38 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
     dot3Animation.stopAnimation();
   };
 
+  // Start waveform animation
+  const startWaveformAnimation = () => {
+    // Create separate animation for each bar
+    waveforms.forEach((anim, index) => {
+      const randomDuration = 700 + Math.random() * 500;
+      const randomHeight = 0.3 + Math.random() * 0.7;
+      
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(anim, {
+            toValue: randomHeight,
+            duration: randomDuration,
+            useNativeDriver: false,
+          }),
+          Animated.timing(anim, {
+            toValue: 0.3,
+            duration: randomDuration,
+            useNativeDriver: false,
+          }),
+        ])
+      ).start();
+    });
+  };
+
+  // Stop waveform animation
+  const stopWaveformAnimation = () => {
+    waveforms.forEach(anim => anim.stopAnimation());
+  };
+
   const toggleVoiceAssistant = async () => {
     try {
-      if (VoiceStateManager.state === VoiceState.IDLE) {
+      if (state === VoiceState.IDLE) {
         await VoiceStateManager.activate();
       } else {
         await VoiceStateManager.deactivate();
@@ -203,7 +249,7 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
         return 'STOP';
       case VoiceState.PROCESSING:
       case VoiceState.RESPONDING:
-        return 'PANIC';
+        return 'STOP';
       default:
         return 'PANIC';
     }
@@ -248,12 +294,19 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
     if (state === VoiceState.LISTENING) {
       stopButtonPulse();
       startDotAnimation();
-    } else if (state === VoiceState.RESPONDING || state === VoiceState.PROCESSING) {
+      stopWaveformAnimation();
+    } else if (state === VoiceState.RESPONDING) {
       startButtonPulse();
       stopDotAnimation();
+      startWaveformAnimation();
+    } else if (state === VoiceState.PROCESSING) {
+      startButtonPulse();
+      stopDotAnimation();
+      stopWaveformAnimation();
     } else {
       stopButtonPulse();
       stopDotAnimation();
+      stopWaveformAnimation();
     }
   }, [state]);
 
@@ -270,8 +323,25 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
     );
   }
 
+  // Determine the background based on the state
+  const renderBackground = () => {
+    if (state === VoiceState.LISTENING) {
+      return (
+        <LinearGradient
+          colors={['#8189E3', '#A78DEF', '#D292F0']}
+          style={styles.gradient}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+        />
+      );
+    }
+    return null;
+  };
+
   return (
     <View style={styles.container}>
+      {renderBackground()}
+      
       <View style={styles.header}>
         <TouchableOpacity
           onPress={() => navigation.openDrawer()}
@@ -295,27 +365,48 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
         <Animated.View style={{
           transform: [{ scale: buttonPulseAnimation }]
         }}>
-        <TouchableOpacity
-          style={[
-            styles.panicButton,
+          <TouchableOpacity
+            style={[
+              styles.panicButton,
               { backgroundColor: getPanicButtonColor() }
-          ]}
+            ]}
             onPress={handlePanicButtonPress}
             disabled={state === VoiceState.PROCESSING}
-        >
+          >
             <Text style={styles.panicButtonText}>
               {getPanicButtonText()}
             </Text>
-        </TouchableOpacity>
+          </TouchableOpacity>
         </Animated.View>
         
         {state === VoiceState.LISTENING && (
           <View style={styles.assistantStatusContainer}>
-              <View style={styles.listeningIndicator}>
-                <Animated.View style={[styles.dot, dot1Style]} />
-                <Animated.View style={[styles.dot, dot2Style]} />
-                <Animated.View style={[styles.dot, dot3Style]} />
-              </View>
+            <View style={styles.listeningIndicator}>
+              <Animated.View style={[styles.dot, dot1Style]} />
+              <Animated.View style={[styles.dot, dot2Style]} />
+              <Animated.View style={[styles.dot, dot3Style]} />
+            </View>
+          </View>
+        )}
+
+        {state === VoiceState.RESPONDING && (
+          <View style={styles.assistantStatusContainer}>
+            <View style={styles.waveformContainer}>
+              {waveforms.map((anim, index) => (
+                <Animated.View 
+                  key={index} 
+                  style={[
+                    styles.waveformBar,
+                    { 
+                      height: anim.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [10, 60]
+                      })
+                    }
+                  ]} 
+                />
+              ))}
+            </View>
           </View>
         )}
       </View>
@@ -380,6 +471,13 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#f0f4f9',
     padding: 16,
+  },
+  gradient: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
   },
   header: {
     flexDirection: 'row',
@@ -473,9 +571,22 @@ const styles = StyleSheet.create({
     width: 12,
     height: 12,
     borderRadius: 6,
-    backgroundColor: '#8189E3',
+    backgroundColor: '#FFFFFF',
     margin: 5,
     opacity: 0.6,
+  },
+  waveformContainer: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+    height: 60,
+    marginTop: 12,
+  },
+  waveformBar: {
+    width: 4,
+    backgroundColor: '#FF6B6B',
+    borderRadius: 2,
+    marginHorizontal: 3,
   },
   bottomButtons: {
     gap: 12,

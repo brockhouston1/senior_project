@@ -36,7 +36,23 @@ export const WS_EVENTS = {
   WEBRTC_ERROR: 'webrtc_error'
 };
 
+// Type for event callback
+type EventCallback = (data?: any) => void;
+
 class APIService {
+  baseUrl: string;
+  socketUrl: string;
+  socket: any; // Socket.IO client
+  connected: boolean;
+  reconnectAttempts: number;
+  maxReconnectAttempts: number;
+  reconnectTimeout: ReturnType<typeof setTimeout> | null;
+  eventListeners: Map<string, EventCallback[]>;
+  conversationHistory: Array<{role: string, content: string}>;
+  voicePreference: string;
+  clientId: string | null;
+  usingWebRTC: boolean;
+    
   constructor() {
     this.baseUrl = API_URL;
     this.socketUrl = SOCKET_URL;
@@ -66,7 +82,7 @@ class APIService {
         console.log('[APIService] Loaded conversation history:', this.conversationHistory.length, 'messages');
       }
     } catch (error) {
-      console.error('[APIService] Error loading history:', error.message);
+      console.error('[APIService] Error loading history:', error);
     }
   }
 
@@ -78,7 +94,7 @@ class APIService {
       await AsyncStorage.setItem('conversation_history', JSON.stringify(this.conversationHistory));
       console.log('[APIService] Saved conversation history:', this.conversationHistory.length, 'messages');
     } catch (error) {
-      console.error('[APIService] Error saving history:', error.message);
+      console.error('[APIService] Error saving history:', error);
     }
   }
 
@@ -130,30 +146,30 @@ class APIService {
           // Initialize WebRTC service
           this._setupWebRTC();
           
-          this.emitEvent(WS_EVENTS.CONNECT);
+          this.emitEvent(WS_EVENTS.CONNECT, null);
         });
         
         // Socket.IO Disconnect
-        this.socket.on('disconnect', (reason) => {
+        this.socket.on('disconnect', (reason: string) => {
           console.log('[APIService] Socket.IO disconnected, reason:', reason);
           this.connected = false;
           this.emitEvent(WS_EVENTS.DISCONNECT, reason);
         });
         
         // Socket.IO Reconnect
-        this.socket.on('reconnect', (attemptNumber) => {
+        this.socket.on('reconnect', (attemptNumber: number) => {
           console.log('[APIService] Socket.IO reconnected, attempt:', attemptNumber);
           this.connected = true;
         });
         
         // Socket.IO Error
-        this.socket.on('error', (error) => {
+        this.socket.on('error', (error: Error) => {
           console.error('[APIService] Socket.IO error:', error);
           this.emitEvent(WS_EVENTS.ERROR, error);
         });
         
         // Server status
-        this.socket.on('server_status', (data) => {
+        this.socket.on('server_status', (data: any) => {
           console.log('[APIService] Server status:', data);
           
           if (data.session_data && data.session_data.client_id) {
@@ -181,19 +197,19 @@ class APIService {
    */
   _setupEventHandlers() {
     // Transcription events
-    this.socket.on('transcription', (data) => {
+    this.socket.on('transcription', (data: any) => {
       console.log('[APIService] Transcription received:', data.text);
       this.emitEvent(WS_EVENTS.TRANSCRIPTION, data.text);
     });
     
     // Audio data events
-    this.socket.on('audio_data', (data) => {
+    this.socket.on('audio_data', (data: any) => {
       console.log('[APIService] Audio data received');
       this.emitEvent(WS_EVENTS.AUDIO_DATA, data.audio);
     });
     
     // Response events
-    this.socket.on('response', (data) => {
+    this.socket.on('response', (data: any) => {
       console.log('[APIService] Response received');
       
       // Add assistant response to history
@@ -206,9 +222,20 @@ class APIService {
     });
     
     // Error events
-    this.socket.on('error_message', (data) => {
+    this.socket.on('error_message', (data: any) => {
       console.error('[APIService] Error from server:', data.message);
       this.emitEvent(WS_EVENTS.ERROR, new Error(data.message));
+    });
+
+    // Audio received confirmation
+    this.socket.on('audio_received', (data: any) => {
+      console.log('[APIService] Audio chunk received confirmation:', data);
+    });
+
+    // Processing status updates
+    this.socket.on('processing_status', (data: any) => {
+      console.log('[APIService] Processing status update:', data);
+      // You can emit custom events based on the processing stage
     });
   }
   
@@ -230,13 +257,13 @@ class APIService {
     WebRTCService.on(WEBRTC_EVENTS.STREAM_READY, () => {
       console.log('[APIService] WebRTC stream ready');
       this.usingWebRTC = true;
-      this.emitEvent(WS_EVENTS.WEBRTC_READY);
+      this.emitEvent(WS_EVENTS.WEBRTC_READY, null);
     });
     
     WebRTCService.on(WEBRTC_EVENTS.STREAM_CLOSED, () => {
       console.log('[APIService] WebRTC stream closed');
       this.usingWebRTC = false;
-      this.emitEvent(WS_EVENTS.WEBRTC_CLOSED);
+      this.emitEvent(WS_EVENTS.WEBRTC_CLOSED, null);
     });
     
     WebRTCService.on(WEBRTC_EVENTS.ERROR, (error) => {
@@ -249,190 +276,214 @@ class APIService {
    * Start WebRTC stream
    */
   async startWebRTCStream() {
-    if (!this.connected) {
-      console.error('[APIService] Cannot start WebRTC: Socket not connected');
-      throw new Error('Socket not connected');
+    try {
+      if (!this.connected) {
+        console.error('[APIService] Cannot start WebRTC stream: WebSocket not connected');
+        return false;
+      }
+      
+      if (!WebRTCService) {
+        console.error('[APIService] WebRTC service not available');
+        return false;
+      }
+      
+      console.log('[APIService] Starting WebRTC stream');
+      const success = await WebRTCService.startStream();
+      
+      if (success) {
+        console.log('[APIService] WebRTC stream started successfully');
+        this.usingWebRTC = true;
+        return true;
+      } else {
+        console.error('[APIService] Failed to start WebRTC stream');
+        return false;
+      }
+    } catch (error) {
+      console.error('[APIService] Error starting WebRTC stream:', error);
+      return false;
     }
-    
-    console.log('[APIService] Starting WebRTC stream');
-    const success = await WebRTCService.startStream();
-    
-    if (success) {
-      console.log('[APIService] WebRTC stream started successfully');
-    } else {
-      console.error('[APIService] Failed to start WebRTC stream');
-    }
-    
-    return success;
   }
   
   /**
    * Stop WebRTC stream
    */
-  stopWebRTCStream() {
-    console.log('[APIService] Stopping WebRTC stream');
-    WebRTCService.stopStream();
-    this.usingWebRTC = false;
+  async stopWebRTCStream() {
+    try {
+      if (!WebRTCService) {
+        console.error('[APIService] WebRTC service not available');
+        return;
+      }
+      
+      console.log('[APIService] Stopping WebRTC stream');
+      await WebRTCService.stopStream();
+      this.usingWebRTC = false;
+      
+      console.log('[APIService] WebRTC stream stopped');
+    } catch (error) {
+      console.error('[APIService] Error stopping WebRTC stream:', error);
+    }
   }
   
   /**
-   * Check if WebRTC is available and connected
+   * Check if WebRTC is supported
    */
-  isWebRTCAvailable() {
-    return this.connected && WebRTCService.isStreamConnected();
+  isWebRTCSupported() {
+    try {
+      // Check if WebRTC service is available
+      if (!WebRTCService) {
+        return false;
+      }
+      
+      // Check if the platform supports WebRTC
+      if (Platform.OS === 'web') {
+        // For web platforms, check if the browser supports WebRTC
+        return typeof window !== 'undefined' && 
+               'RTCPeerConnection' in window &&
+               'getUserMedia' in navigator.mediaDevices;
+      } else {
+        // For native platforms, check if the module is available
+        return true; // We assume the react-native-webrtc package is installed
+      }
+    } catch (error) {
+      console.error('[APIService] Error checking WebRTC support:', error);
+      return false;
+    }
+  }
+  
+  /**
+   * Send an audio chunk to the server
+   */
+  sendAudioChunk(audioBase64: string) {
+    if (!this.connected || !this.socket) {
+      console.error('[APIService] Cannot send audio chunk: WebSocket not connected');
+      return false;
+    }
+    
+    try {
+      this.socket.emit('audio', { audio_data: audioBase64 });
+      return true;
+    } catch (error) {
+      console.error('[APIService] Error sending audio chunk:', error);
+      return false;
+    }
+  }
+  
+  /**
+   * Tell the server to process accumulated audio chunks
+   */
+  processAudio() {
+    if (!this.connected || !this.socket) {
+      console.error('[APIService] Cannot process audio: WebSocket not connected');
+      return false;
+    }
+    
+    try {
+      this.socket.emit('process_audio');
+      return true;
+    } catch (error) {
+      console.error('[APIService] Error sending process_audio command:', error);
+      return false;
+    }
+  }
+  
+  /**
+   * Send a text message to the server (for testing without audio)
+   */
+  sendTextMessage(text: string) {
+    if (!this.connected || !this.socket) {
+      console.error('[APIService] Cannot send text message: WebSocket not connected');
+      return false;
+    }
+    
+    try {
+      // Add to conversation history
+      this.conversationHistory.push({ role: 'user', content: text });
+      this.saveHistory();
+      
+      // Send to server
+      this.socket.emit('text_message', { text });
+      return true;
+    } catch (error) {
+      console.error('[APIService] Error sending text message:', error);
+      return false;
+    }
+  }
+  
+  /**
+   * Add event listener
+   */
+  on(event: string, callback: EventCallback) {
+    if (!this.eventListeners.has(event)) {
+      this.eventListeners.set(event, []);
+    }
+    
+    const listeners = this.eventListeners.get(event);
+    if (listeners) {
+      listeners.push(callback);
+    }
+    return this;
+  }
+  
+  /**
+   * Remove event listener
+   */
+  off(event: string, callback: EventCallback) {
+    if (!this.eventListeners.has(event)) {
+      return this;
+    }
+    
+    const listeners = this.eventListeners.get(event);
+    if (listeners) {
+      const index = listeners.indexOf(callback);
+      
+      if (index !== -1) {
+        listeners.splice(index, 1);
+      }
+    }
+    
+    return this;
+  }
+  
+  /**
+   * Emit event to listeners
+   */
+  emitEvent(event: string, data: any) {
+    if (!this.eventListeners.has(event)) {
+      return;
+    }
+    
+    const listeners = this.eventListeners.get(event);
+    if (listeners) {
+      listeners.forEach(callback => {
+        try {
+          callback(data);
+        } catch (error) {
+          console.error('[APIService] Error in event listener:', error);
+        }
+      });
+    }
+  }
+  
+  /**
+   * Check if WebSocket is connected
+   */
+  isConnected() {
+    return this.connected && !!this.socket;
   }
   
   /**
    * Disconnect from WebSocket server
    */
   disconnect() {
-    // Stop WebRTC first if active
-    if (this.usingWebRTC) {
-      this.stopWebRTCStream();
-    }
-    
     if (this.socket) {
-      console.log('[APIService] Disconnecting Socket.IO');
-      this.socket.disconnect();
-      this.socket = null;
-      this.connected = false;
-      this.clientId = null;
-    }
-  }
-  
-  /**
-   * Send a message through Socket.IO
-   */
-  emit(event, data = {}) {
-    if (!this.socket || !this.connected) {
-      console.error('[APIService] Cannot send message: Socket not connected');
-      throw new Error('Socket not connected');
-    }
-    
-    console.log(`[APIService] Emitting ${event} event`);
-    this.socket.emit(event, data);
-  }
-  
-  /**
-   * Send audio data for transcription
-   * Uses WebRTC if available, falls back to Socket.IO
-   */
-  async sendAudioForTranscription(audioData) {
-    try {
-      if (!this.connected) {
-        throw new Error('Not connected to server');
-      }
-      
-      console.log('[APIService] Sending audio for transcription');
-      
-      // If using WebRTC and it's connected, audio is already streaming
-      // No need to send audio data separately
-      if (this.usingWebRTC && WebRTCService.isStreamConnected()) {
-        console.log('[APIService] Using WebRTC for audio streaming');
-        return;
-      }
-      
-      // Fallback to Socket.IO for audio transmission
-      console.log('[APIService] Using Socket.IO for audio transmission');
-      this.emit('audio', {
-        audio_data: audioData,
-        file_format: Platform.OS === 'ios' ? 'm4a' : 'mp3'
-      });
-      
-    } catch (error) {
-      console.error('[APIService] Error sending audio for transcription:', error);
-      throw error;
-    }
-  }
-  
-  /**
-   * Send text for processing
-   */
-  sendTextMessage(text) {
-    try {
-      if (!this.connected) {
-        throw new Error('Not connected to server');
-      }
-      
-      console.log('[APIService] Sending text message:', text);
-      
-      // Add to conversation history
-      this.conversationHistory.push({ role: 'user', content: text });
-      this.saveHistory();
-      
-      // Send message through Socket.IO
-      this.emit('message', {
-        text,
-        voice: this.voicePreference
-      });
-      
-    } catch (error) {
-      console.error('[APIService] Error sending text message:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Set voice preference for TTS
-   */
-  setVoicePreference(voice) {
-    console.log('[APIService] Setting voice preference:', voice);
-    this.voicePreference = voice;
-  }
-
-  /**
-   * Register event listener
-   */
-  on(event, callback) {
-    if (!this.eventListeners.has(event)) {
-      this.eventListeners.set(event, []);
-    }
-    this.eventListeners.get(event).push(callback);
-  }
-
-  /**
-   * Remove event listener
-   */
-  off(event, callback) {
-    if (!this.eventListeners.has(event)) return;
-    
-    const listeners = this.eventListeners.get(event);
-    const index = listeners.indexOf(callback);
-    
-    if (index !== -1) {
-      listeners.splice(index, 1);
-    }
-  }
-
-  /**
-   * Emit event to registered listeners
-   */
-  emitEvent(event, data) {
-    if (!this.eventListeners.has(event)) return;
-    
-    this.eventListeners.get(event).forEach(callback => {
       try {
-        callback(data);
+        this.socket.disconnect();
+        this.socket = null;
+        this.connected = false;
+        console.log('[APIService] Disconnected from WebSocket server');
       } catch (error) {
-        console.error('[APIService] Error in event listener:', error);
+        console.error('[APIService] Error disconnecting from WebSocket server:', error);
       }
-    });
-  }
-
-  /**
-   * Check if backend is available via REST (fallback)
-   */
-  async checkBackendAvailability() {
-    try {
-      const response = await fetch(`${this.baseUrl}/api/openai/health`);
-      if (!response.ok) {
-        throw new Error(`Backend not ready (${response.status})`);
-      }
-      const data = await response.json();
-      return data.status === 'ok';
-    } catch (error) {
-      console.error('[APIService] Backend check failed:', error.message);
-      return false;
     }
   }
 }

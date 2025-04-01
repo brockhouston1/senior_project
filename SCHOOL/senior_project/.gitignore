@@ -2,6 +2,11 @@
 .env
 *.env
 
+# Explicitly track these files
+!mobile/src/services/WebRTCService.ts
+!mobile/src/screens/WebRTCDemoScreen.tsx
+!path/to/backend/websocket_server.py
+
 # Audio output files
 *.mp3
 
