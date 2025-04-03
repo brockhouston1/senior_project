@@ -6,6 +6,8 @@ import { MeditateScreen } from '../screens/MeditateScreen';
 import { BreathingScreen } from '../screens/BreathingScreen';
 import { GroundingScreen } from '../screens/GroundingScreen';
 import WebRTCDemoScreen from '../screens/WebRTCDemoScreen';
+import TestAudioScreen from '../screens/TestAudioScreen';
+import TranscriptionTestScreen from '../screens/TranscriptionTestScreen';
 
 const Drawer = createDrawerNavigator();
 
@@ -68,6 +70,20 @@ export const DrawerNavigator = () => {
         component={WebRTCDemoScreen}
         options={{
           drawerLabel: 'WebRTC Demo',
+        }}
+      />
+      <Drawer.Screen 
+        name="TestAudio" 
+        component={TestAudioScreen}
+        options={{
+          drawerLabel: 'Test Audio',
+        }}
+      />
+      <Drawer.Screen 
+        name="TranscriptionTest" 
+        component={TranscriptionTestScreen}
+        options={{
+          drawerLabel: 'Transcription Test',
         }}
       />
     </Drawer.Navigator>

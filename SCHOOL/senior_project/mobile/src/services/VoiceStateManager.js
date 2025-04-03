@@ -58,6 +58,19 @@ class VoiceStateManager {
         }, 500);
       }
     };
+    
+    // Listen for audio data from API service
+    APIService.on('audio_data', async (audioData) => {
+      console.log('[VoiceStateManager] Received audio data from server');
+      if (audioData) {
+        this.setState(VoiceState.RESPONDING);
+        try {
+          await AudioPlaybackService.playAudio(audioData);
+        } catch (error) {
+          console.error('[VoiceStateManager] Error playing audio:', error);
+        }
+      }
+    });
   }
 
   /**
@@ -205,31 +218,159 @@ class VoiceStateManager {
     }
 
     try {
-      // Start a new conversation
-      await APIService.startConversation();
+      // Connect to WebSocket server
+      APIService.connect();
       
-      // Get initial greeting
-      const response = await APIService.getResponse('Hello');
-      if (response && response.audio) {
-        this.setState(VoiceState.RESPONDING);
-        await AudioPlaybackService.playAudio(response.audio);
-        console.log('[VoiceStateManager] Welcome message played');
+      // Set up response listener if not already listening
+      APIService.on('response', (data) => {
+        console.log('[VoiceStateManager] Received response from server:', data);
+        if (data && data.text) {
+          // Response contains text - can be stored or displayed
+          console.log('[VoiceStateManager] Response text:', data.text);
+        }
+      });
+      
+      // Transition to responding state for initial greeting
+      this.setState(VoiceState.RESPONDING);
+      
+      // Wait a moment for connection to be established
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // TESTING ONLY: Simulate a greeting with audio from the server
+      console.log('[VoiceStateManager] Simulating welcome audio for testing');
+      
+      try {
+        // Try to play a beep using the Audio API directly (no remote URL required)
+        await this.playLocalBeep();
+      } catch (localError) {
+        console.error('[VoiceStateManager] Error playing local beep:', localError);
         
-        // Wait for playback to complete and state to change
-        await new Promise(resolve => {
-          const checkState = () => {
-            if (this.state === VoiceState.LISTENING) {
-              resolve();
-            } else {
-              setTimeout(checkState, 100);
-            }
-          };
-          checkState();
-        });
+        // As a backup, try to play a remote sound
+        try {
+          await this.playRemoteAudioForTesting();
+        } catch (remoteError) {
+          console.error('[VoiceStateManager] Error playing test audio:', remoteError);
+        }
       }
+      
+      // Transition to listening state automatically
+      this.setState(VoiceState.LISTENING);
+      await this.startListening();
     } catch (error) {
       console.error('[VoiceStateManager] Start assistant error:', error);
       this.setState(VoiceState.ERROR, error);
+      throw error;
+    }
+  }
+  
+  /**
+   * Play a simple local beep sound using the Audio API directly
+   */
+  async playLocalBeep() {
+    try {
+      console.log('[VoiceStateManager] Creating local sound');
+      
+      // Initialize the Audio API
+      await this.initializeAudio();
+      
+      // Create and play a simple beep
+      const sound = new Audio.Sound();
+      
+      console.log('[VoiceStateManager] Loading sound from Google CDN');
+      await sound.loadAsync({
+        uri: 'https://actions.google.com/sounds/v1/alarms/beep_short.ogg'
+      });
+      
+      console.log('[VoiceStateManager] Playing sound');
+      await sound.playAsync();
+      
+      // Wait for the sound to finish or timeout
+      await new Promise(resolve => {
+        // Add status update handler
+        sound.setOnPlaybackStatusUpdate(status => {
+          if (status.didJustFinish) {
+            console.log('[VoiceStateManager] Sound finished playing');
+            resolve();
+          }
+        });
+        
+        // Set a timeout in case the sound doesn't trigger didJustFinish
+        setTimeout(() => {
+          console.log('[VoiceStateManager] Sound playback timeout');
+          resolve();
+        }, 2000);
+      });
+      
+      // Clean up
+      await sound.unloadAsync();
+      console.log('[VoiceStateManager] Local beep sequence finished');
+    } catch (error) {
+      console.error('[VoiceStateManager] Error playing local beep:', error);
+      throw error;
+    }
+  }
+  
+  /**
+   * Initialize audio settings for playback
+   */
+  async initializeAudio() {
+    try {
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: false,
+        playsInSilentModeIOS: true,
+        staysActiveInBackground: false,
+        interruptionModeIOS: 1, // Audio.InterruptionModeIOS.DoNotMix
+        shouldDuckAndroid: false,
+        interruptionModeAndroid: 1, // Audio.InterruptionModeAndroid.DoNotMix
+        playThroughEarpieceAndroid: false,
+      });
+    } catch (error) {
+      console.error('[VoiceStateManager] Error initializing audio:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Play a remote audio file for testing (temporary)
+   */
+  async playRemoteAudioForTesting() {
+    try {
+      console.log('[VoiceStateManager] Creating sound object from remote URL');
+      
+      // Create a new sound object
+      const sound = new Audio.Sound();
+      
+      // Load from Google's CDN (highly reliable)
+      await sound.loadAsync({
+        uri: 'https://actions.google.com/sounds/v1/alarms/alarm_clock.ogg'
+      });
+      
+      // Play the sound
+      console.log('[VoiceStateManager] Playing test sound');
+      await sound.playAsync();
+      
+      // Wait for the sound to finish or timeout
+      await new Promise(resolve => {
+        // Add status update handler
+        sound.setOnPlaybackStatusUpdate(status => {
+          if (status.didJustFinish) {
+            console.log('[VoiceStateManager] Sound finished playing');
+            resolve();
+          }
+        });
+        
+        // Set a timeout in case the sound doesn't trigger didJustFinish
+        setTimeout(() => {
+          console.log('[VoiceStateManager] Sound playback timeout');
+          resolve();
+        }, 3000);
+      });
+      
+      // Clean up
+      await sound.unloadAsync();
+      console.log('[VoiceStateManager] Test sound finished');
+    } catch (error) {
+      console.error('[VoiceStateManager] Error playing remote test audio:', error);
       throw error;
     }
   }
@@ -372,21 +513,14 @@ class VoiceStateManager {
         throw new Error('Invalid audio data: base64 content too small');
       }
       
+      // Send audio data to API service
       console.log('[VoiceStateManager] Sending audio for transcription');
-      const transcript = await APIService.transcribeAudio(base64Audio);
+      await APIService.sendAudioForTranscription(base64Audio);
       
-      if (!transcript) {
-        throw new Error('Failed to transcribe audio');
-      }
+      // For now, simulate a response by waiting
+      await new Promise(resolve => setTimeout(resolve, 1000));
       
-      console.log('[VoiceStateManager] Got transcript:', transcript);
-      this.setState(VoiceState.RESPONDING);
-      const response = await APIService.getResponse(transcript);
-      
-      if (response.audio) {
-        await AudioPlaybackService.playAudio(response.audio);
-        console.log('[VoiceStateManager] Response played');
-      }
+      this.setState(VoiceState.IDLE);
       
     } catch (error) {
       console.error('[VoiceStateManager] Processing error:', error.message);

@@ -17,7 +17,19 @@
       "infoPlist": {
         "NSCameraUsageDescription": "This app uses the camera for WebRTC video calls",
         "NSMicrophoneUsageDescription": "This app uses the microphone for recording audio and WebRTC calls",
-        "NSSpeechRecognitionUsageDescription": "Allow $(PRODUCT_NAME) to use speech recognition."
+        "NSSpeechRecognitionUsageDescription": "Allow $(PRODUCT_NAME) to use speech recognition.",
+        "NSAppTransportSecurity": {
+          "NSAllowsArbitraryLoads": true,
+          "NSExceptionDomains": {
+            "localhost": {
+              "NSExceptionAllowsInsecureHTTPLoads": true
+            },
+            "144.38.137.109": {
+              "NSIncludesSubdomains": true,
+              "NSExceptionAllowsInsecureHTTPLoads": true
+            }
+          }
+        }
       },
       "bitcode": false,
       "bundleIdentifier": "com.anonymous.mobile"

@@ -55,6 +55,12 @@ class AudioPlaybackService {
     
     try {
       console.log('[AudioPlaybackService] Starting playback');
+      console.log('[AudioPlaybackService] Audio data length:', audioBase64.length, 'characters');
+      
+      // Log a sample of the audio data to verify it's valid base64
+      if (audioBase64.length > 50) {
+        console.log('[AudioPlaybackService] Audio data sample:', audioBase64.substring(0, 50) + '...');
+      }
       
       await this.initializePlayback();
       await this.stopPlayback();
@@ -67,13 +73,28 @@ class AudioPlaybackService {
       } else {
         console.log('[AudioPlaybackService] Creating new sound object');
         try {
+          // Explicitly log the URI we're trying to load
+          const uri = `data:audio/mp3;base64,${audioBase64}`;
+          console.log('[AudioPlaybackService] Creating audio URI (starts with):', uri.substring(0, 30) + '...');
+          
+          // Verify the base64 data looks valid (should start with certain patterns for MP3)
+          // First few bytes of MP3 files often start with ID3 or MPEG frame sync
+          const validStart = audioBase64.startsWith('/') || 
+                            audioBase64.startsWith('SUQz') || // 'ID3' in base64
+                            audioBase64.startsWith('//vs'); // Common MPEG frame sync in base64
+                            
+          if (!validStart) {
+            console.warn('[AudioPlaybackService] Warning: Audio data may not be valid MP3 base64 format');
+          }
+          
+          console.log('[AudioPlaybackService] Creating sound object from URI');
           const { sound } = await Audio.Sound.createAsync(
-            { uri: `data:audio/mp3;base64,${audioBase64}` },
+            { uri },
             { shouldPlay: false, progressUpdateIntervalMillis: 100 }
           );
           this.sound = sound;
           this.audioCache.set(audioHash, sound);
-          console.log('[AudioPlaybackService] Sound object created');
+          console.log('[AudioPlaybackService] Sound object created successfully');
 
           if (this.audioCache.size > this.maxCacheSize) {
             const oldestKey = this.audioCache.keys().next().value;
@@ -82,8 +103,24 @@ class AudioPlaybackService {
             this.audioCache.delete(oldestKey);
           }
         } catch (error) {
-          console.error('[AudioPlaybackService] Error creating sound:', error.message);
-          throw error;
+          console.error('[AudioPlaybackService] Error creating sound:', error.message || error);
+          console.error('[AudioPlaybackService] Audio format may be invalid or unsupported');
+          
+          // Try alternate base64 format
+          try {
+            console.log('[AudioPlaybackService] Trying alternate format: data:audio/mpeg;base64');
+            const alternateUri = `data:audio/mpeg;base64,${audioBase64}`;
+            const { sound } = await Audio.Sound.createAsync(
+              { uri: alternateUri },
+              { shouldPlay: false, progressUpdateIntervalMillis: 100 }
+            );
+            this.sound = sound;
+            this.audioCache.set(audioHash, sound);
+            console.log('[AudioPlaybackService] Alternate format worked!');
+          } catch (alternateError) {
+            console.error('[AudioPlaybackService] Alternate format also failed:', alternateError.message || alternateError);
+            throw error; // Throw the original error
+          }
         }
       }
 

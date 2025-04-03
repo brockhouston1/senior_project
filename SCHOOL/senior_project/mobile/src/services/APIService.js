@@ -101,9 +101,18 @@ class APIService {
    * Connect to WebSocket server
    */
   connect() {
-    if (this.socket && this.connected) {
-      console.log('[APIService] WebSocket already connected');
-      return;
+    if (this.socket) {
+      if (this.connected) {
+        console.log('[APIService] WebSocket already connected');
+        return;
+      } else {
+        // If we have a socket instance but aren't connected, try to reconnect
+        console.log('[APIService] Socket exists but disconnected, attempting to reconnect');
+        if (this.socket.disconnected) {
+          this.socket.connect();
+          return;
+        }
+      }
     }
     
     try {
@@ -117,7 +126,13 @@ class APIService {
           reconnection: true,
           reconnectionAttempts: this.maxReconnectAttempts,
           reconnectionDelay: 1000,
-          reconnectionDelayMax: 5000
+          reconnectionDelayMax: 5000,
+          // Increase Socket.IO timeout to handle large audio files
+          timeout: 60000, // 60 second timeout
+          // Allow larger message sizes (default is often too small for audio)
+          maxHttpBufferSize: 10e6, // 10MB (adjust based on expected audio file sizes)
+          // Automatically try reconnecting on errors
+          autoConnect: true
         });
         
         // Socket.IO Connect
@@ -138,12 +153,35 @@ class APIService {
           console.log('[APIService] Socket.IO disconnected, reason:', reason);
           this.connected = false;
           this.emitEvent(WS_EVENTS.DISCONNECT, reason);
+          
+          // Try to reconnect automatically on transport close
+          if (reason === 'transport close' || reason === 'ping timeout') {
+            console.log('[APIService] Transport issue detected, attempting immediate reconnect');
+            setTimeout(() => {
+              if (this.socket && this.socket.disconnected) {
+                console.log('[APIService] Attempting to reconnect after transport close');
+                this.socket.connect();
+              }
+            }, 1000);
+          }
         });
         
         // Socket.IO Reconnect
         this.socket.on('reconnect', (attemptNumber) => {
           console.log('[APIService] Socket.IO reconnected, attempt:', attemptNumber);
           this.connected = true;
+          this.emitEvent(WS_EVENTS.CONNECT); // Re-emit connect event on reconnect
+        });
+        
+        // Socket.IO Reconnect Failed
+        this.socket.on('reconnect_failed', () => {
+          console.log('[APIService] Socket.IO reconnection failed after multiple attempts');
+          this.emitEvent(WS_EVENTS.ERROR, new Error('Failed to reconnect after multiple attempts'));
+        });
+        
+        // Socket.IO Reconnect Error
+        this.socket.on('reconnect_error', (error) => {
+          console.log('[APIService] Socket.IO reconnection error:', error);
         });
         
         // Socket.IO Error
@@ -316,11 +354,35 @@ class APIService {
   /**
    * Send audio data for transcription
    * Uses WebRTC if available, falls back to Socket.IO
+   * @param {string} audioData - Base64 encoded audio data
+   * @param {string} [fileFormat] - Optional file format (e.g., 'm4a', 'mp3')
    */
-  async sendAudioForTranscription(audioData) {
+  async sendAudioForTranscription(audioData, fileFormat) {
     try {
+      // Check connection before attempting to send data
+      if (!this.socket) {
+        console.log('[APIService] No socket connection, attempting to reconnect');
+        this.connect();
+        // Wait a bit for the connection to establish
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+      
       if (!this.connected) {
-        throw new Error('Not connected to server');
+        console.log('[APIService] Not connected to server, attempting to reconnect');
+        if (this.socket) {
+          this.socket.connect();
+          // Wait a bit for the connection to establish
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        } else {
+          this.connect();
+          // Wait a bit for the connection to establish
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+        
+        // If still not connected, throw an error
+        if (!this.connected) {
+          throw new Error('Unable to connect to server');
+        }
       }
       
       console.log('[APIService] Sending audio for transcription');
@@ -332,13 +394,65 @@ class APIService {
         return;
       }
       
-      // Fallback to Socket.IO for audio transmission
-      console.log('[APIService] Using Socket.IO for audio transmission');
-      this.emit('audio', {
-        audio_data: audioData,
-        file_format: Platform.OS === 'ios' ? 'm4a' : 'mp3'
-      });
+      // Get file format based on platform or use provided format
+      const format = fileFormat || (Platform.OS === 'ios' ? 'm4a' : 'mp3');
+      console.log(`[APIService] Using file format: ${format}`);
       
+      // Check audio data size
+      const audioSize = audioData.length;
+      console.log(`[APIService] Audio data size: ${audioSize} bytes`);
+      
+      // Determine if we need to chunk the data
+      // Typical limit for Socket.IO is around 1MB, so we'll chunk at 500KB to be safe
+      const CHUNK_SIZE = 500 * 1024; // 500KB in base64 characters
+      
+      if (audioSize <= CHUNK_SIZE) {
+        // Small enough to send in one message
+        console.log('[APIService] Sending audio in single message');
+        
+        // Fallback to Socket.IO for audio transmission
+        this.emit('audio', {
+          audio_data: audioData,
+          file_format: format,
+          chunked: false
+        });
+      } else {
+        // Large audio needs to be chunked
+        console.log(`[APIService] Audio size (${audioSize} bytes) exceeds chunk size (${CHUNK_SIZE} bytes)`);
+        console.log('[APIService] Sending audio in chunks');
+        
+        // Calculate number of chunks
+        const chunkCount = Math.ceil(audioSize / CHUNK_SIZE);
+        console.log(`[APIService] Sending audio in ${chunkCount} chunks`);
+        
+        // Send chunk info first
+        this.emit('audio_chunk_info', {
+          total_chunks: chunkCount,
+          file_format: format,
+          total_size: audioSize
+        });
+        
+        // Send each chunk with small delay to prevent overwhelming the server
+        for (let i = 0; i < chunkCount; i++) {
+          const start = i * CHUNK_SIZE;
+          const end = Math.min(start + CHUNK_SIZE, audioSize);
+          const chunk = audioData.substring(start, end);
+          
+          console.log(`[APIService] Sending chunk ${i+1}/${chunkCount}, size: ${chunk.length} bytes`);
+          
+          // Send the chunk
+          this.emit('audio_chunk', {
+            chunk_data: chunk,
+            chunk_index: i,
+            is_last: i === chunkCount - 1
+          });
+          
+          // Small delay to prevent overwhelming the Socket.IO connection
+          await new Promise(resolve => setTimeout(resolve, 50));
+        }
+        
+        console.log('[APIService] All chunks sent successfully');
+      }
     } catch (error) {
       console.error('[APIService] Error sending audio for transcription:', error);
       throw error;
@@ -434,6 +548,68 @@ class APIService {
       console.error('[APIService] Backend check failed:', error.message);
       return false;
     }
+  }
+
+  /**
+   * Process transcription and get LLM response
+   * @param {string} transcription - Text to send to the LLM
+   */
+  processTranscription(transcription) {
+    try {
+      if (!this.connected) {
+        console.error('[APIService] Cannot process transcription: Socket not connected');
+        throw new Error('Socket not connected');
+      }
+      
+      console.log('[APIService] Processing transcription with LLM:', transcription);
+      
+      // Send request to process the transcription
+      this.emit('process_transcription', {
+        text: transcription,
+        voice: this.voicePreference
+      });
+    } catch (error) {
+      console.error('[APIService] Error processing transcription:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Check if the socket is actually connected based on socket properties
+   * @returns {Promise<boolean>} True if the socket is connected
+   */
+  async checkSocketConnection() {
+    return new Promise((resolve) => {
+      if (!this.socket) {
+        console.log('[APIService] No socket object exists');
+        resolve(false);
+        return;
+      }
+      
+      // Check socket properties to determine connection status
+      const hasId = !!this.socket.id;
+      const isConnected = this.socket.connected;
+      
+      if (hasId && isConnected) {
+        console.log('[APIService] Socket appears connected: ID=' + this.socket.id);
+        
+        // Send a health check to the server which should work with any server
+        this.socket.emit('health_check');
+        
+        // Return true immediately since we're checking the properties
+        resolve(true);
+      } else {
+        console.log('[APIService] Socket disconnected: hasId=' + hasId + ', connected=' + isConnected);
+        
+        // Check if we need to reconnect
+        if (this.socket.disconnected) {
+          console.log('[APIService] Socket is explicitly disconnected, attempting to connect');
+          this.socket.connect();
+        }
+        
+        resolve(false);
+      }
+    });
   }
 }
 

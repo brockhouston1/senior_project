@@ -5,7 +5,14 @@ class AudioRecordingService {
     this.recording = null;
     this.isInitialized = false;
     this.onRecordingStatusUpdate = null;
+    
+    // Silence detection parameters
+    this.silenceDetectionEnabled = true;
+    this.silenceThresholdDb = -30; // dB threshold for silence (adjust as needed)
+    this.silenceTimeThreshold = 2000; // 2 seconds of silence before stopping
     this.silenceDetectionStartTime = null;
+    this.statusUpdateInterval = null;
+    this.onSilenceDetected = null;
     
     // Recording options optimized for voice
     this.recordingOptions = {
@@ -19,6 +26,7 @@ class AudioRecordingService {
       },
       ios: {
         extension: '.wav',
+        outputFormat: Audio.RECORDING_OPTION_IOS_OUTPUT_FORMAT_LINEAR_PCM,
         audioQuality: Audio.RECORDING_OPTION_IOS_AUDIO_QUALITY_HIGH,
         sampleRate: 44100,
         numberOfChannels: 1,
@@ -26,10 +34,6 @@ class AudioRecordingService {
         linearPCMBitDepth: 16,
         linearPCMIsBigEndian: false,
         linearPCMIsFloat: false,
-      },
-      web: {
-        mimeType: 'audio/wav',
-        audioBitsPerSecond: 128000,
       },
     };
   }
@@ -70,10 +74,24 @@ class AudioRecordingService {
   }
 
   /**
-   * Set callback for recording status updates
+   * Set callback for when silence is detected
+   * @param {Function} callback - Function to call when silence is detected
    */
-  setOnRecordingStatusUpdate(callback) {
-    this.onRecordingStatusUpdate = callback;
+  setOnSilenceDetected(callback) {
+    this.onSilenceDetected = callback;
+  }
+
+  /**
+   * Configure silence detection
+   * @param {boolean} enabled - Whether silence detection is enabled
+   * @param {number} thresholdDb - dB threshold for silence detection
+   * @param {number} timeThreshold - Time in ms of silence before stopping
+   */
+  configureSilenceDetection(enabled = true, thresholdDb = -30, timeThreshold = 2000) {
+    this.silenceDetectionEnabled = enabled;
+    this.silenceThresholdDb = thresholdDb;
+    this.silenceTimeThreshold = timeThreshold;
+    console.log(`[AudioRecordingService] Silence detection ${enabled ? 'enabled' : 'disabled'}, threshold: ${thresholdDb}dB, time: ${timeThreshold}ms`);
   }
 
   /**
@@ -101,19 +119,19 @@ class AudioRecordingService {
       
       console.log('[AudioRecordingService] Preparing to record');
       
-      // Use platform-specific formats that are well supported
+      // Use WAV format which is better supported by transcription services
       const recordingOptions = {
         android: {
-          extension: '.mp3',
-          outputFormat: Audio.RECORDING_OPTION_ANDROID_OUTPUT_FORMAT_MPEG_4,
-          audioEncoder: Audio.RECORDING_OPTION_ANDROID_AUDIO_ENCODER_AAC,
+          extension: '.wav',
+          outputFormat: Audio.RECORDING_OPTION_ANDROID_OUTPUT_FORMAT_DEFAULT,
+          audioEncoder: Audio.RECORDING_OPTION_ANDROID_AUDIO_ENCODER_DEFAULT,
           sampleRate: 44100,
           numberOfChannels: 1,
           bitRate: 128000,
         },
         ios: {
-          extension: '.m4a', // iOS supports M4A much better than MP3 for recording
-          outputFormat: Audio.RECORDING_OPTION_IOS_OUTPUT_FORMAT_MPEG4AAC,
+          extension: '.wav',
+          outputFormat: Audio.RECORDING_OPTION_IOS_OUTPUT_FORMAT_LINEAR_PCM,
           audioQuality: Audio.RECORDING_OPTION_IOS_AUDIO_QUALITY_HIGH,
           sampleRate: 44100,
           numberOfChannels: 1,
@@ -126,6 +144,16 @@ class AudioRecordingService {
       
       console.log('[AudioRecordingService] Using recording options:', JSON.stringify(recordingOptions));
       await this.recording.prepareToRecordAsync(recordingOptions);
+      
+      // Set up status update handler for silence detection
+      if (this.silenceDetectionEnabled) {
+        console.log('[AudioRecordingService] Setting up silence detection');
+        this.silenceDetectionStartTime = null;
+        
+        // Set up status update monitoring
+        this.recording.setOnRecordingStatusUpdate(this._handleRecordingStatus);
+        this.recording.setProgressUpdateInterval(500); // Update every 500ms
+      }
       
       // Start recording
       console.log('[AudioRecordingService] Starting recording');
@@ -143,6 +171,47 @@ class AudioRecordingService {
         }
       }
       return false;
+    }
+  }
+
+  /**
+   * Handle recording status updates for silence detection
+   */
+  _handleRecordingStatus = (status) => {
+    if (!this.silenceDetectionEnabled || !status.isRecording) {
+      return;
+    }
+    
+    // Get the audio level (metering) from the status
+    const metering = status.metering || -160; // Default to -160 if not available
+    
+    // Check if the audio level indicates silence
+    if (metering <= this.silenceThresholdDb) {
+      // If silence just started, record the start time
+      if (this.silenceDetectionStartTime === null) {
+        this.silenceDetectionStartTime = new Date().getTime();
+        console.log(`[AudioRecordingService] Silence detected, starting timer (level: ${metering}dB)`);
+      } else {
+        // Check if silence has been ongoing for the threshold duration
+        const silenceDuration = new Date().getTime() - this.silenceDetectionStartTime;
+        
+        if (silenceDuration >= this.silenceTimeThreshold) {
+          console.log(`[AudioRecordingService] Silence threshold reached (${silenceDuration}ms), stopping recording`);
+          
+          // Stop recording
+          this.stopRecording().then(result => {
+            if (this.onSilenceDetected && result) {
+              this.onSilenceDetected(result);
+            }
+          });
+        }
+      }
+    } else {
+      // Reset the silence timer if sound is detected
+      if (this.silenceDetectionStartTime !== null) {
+        console.log(`[AudioRecordingService] Sound detected (level: ${metering}dB), resetting silence timer`);
+        this.silenceDetectionStartTime = null;
+      }
     }
   }
 
@@ -177,6 +246,7 @@ class AudioRecordingService {
       // Clean up
       const recordingObject = this.recording;
       this.recording = null;
+      this.silenceDetectionStartTime = null;
       
       return {
         uri,
@@ -186,6 +256,7 @@ class AudioRecordingService {
     } catch (error) {
       console.error('[AudioRecordingService] Error stopping recording:', error);
       this.recording = null;
+      this.silenceDetectionStartTime = null;
       return null;
     }
   }
@@ -225,6 +296,7 @@ class AudioRecordingService {
       }
       this.recording = null;
     }
+    this.silenceDetectionStartTime = null;
   }
 }
 
