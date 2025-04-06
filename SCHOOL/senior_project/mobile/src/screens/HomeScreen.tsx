@@ -80,62 +80,14 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
   const [silenceThreshold, setSilenceThreshold] = useState(2000); // 2 seconds
   const [isContinuousMode, setIsContinuousMode] = useState(false);
   
-  // Animation values for the pulsing dots
-  const dot1Animation = useRef(new Animated.Value(0)).current;
-  const dot2Animation = useRef(new Animated.Value(0)).current;
-  const dot3Animation = useRef(new Animated.Value(0)).current;
-  
   // Animation value for button pulse
   const buttonPulseAnimation = useRef(new Animated.Value(1)).current;
-  
-  // Animation values for waveform
-  const waveforms = Array.from({ length: 7 }, (_, i) => useRef(new Animated.Value(0.3)).current);
   
   // Reference to manage audio playback
   const responseSound = useRef<Audio.Sound | null>(null);
   
   // Reference for memoized callback to avoid dependency loop
   const initializeSocketRef = useRef<() => Promise<void>>();
-  
-  // Animation style calculations
-  const dot1Style = {
-    transform: [{
-      scale: dot1Animation.interpolate({
-        inputRange: [0, 0.5, 1],
-        outputRange: [1, 1.5, 1]
-      })
-    }],
-    opacity: dot1Animation.interpolate({
-      inputRange: [0, 0.5, 1],
-      outputRange: [0.6, 1, 0.6]
-    })
-  };
-  
-  const dot2Style = {
-    transform: [{
-      scale: dot2Animation.interpolate({
-        inputRange: [0, 0.5, 1],
-        outputRange: [1, 1.5, 1]
-      })
-    }],
-    opacity: dot2Animation.interpolate({
-      inputRange: [0, 0.5, 1],
-      outputRange: [0.6, 1, 0.6]
-    })
-  };
-  
-  const dot3Style = {
-    transform: [{
-      scale: dot3Animation.interpolate({
-        inputRange: [0, 0.5, 1],
-        outputRange: [1, 1.5, 1]
-      })
-    }],
-    opacity: dot3Animation.interpolate({
-      inputRange: [0, 0.5, 1],
-      outputRange: [0.6, 1, 0.6]
-    })
-  };
   
   // Add state for tracking processing start time
   const [processingStartTime, setProcessingStartTime] = useState<number | null>(null);
@@ -593,7 +545,6 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
           started = await AudioRecordingService.startRecording();
           if (started) {
             addLog('Recording started successfully');
-            startDotAnimation();
             break;
           } else {
             throw new Error('Failed to start recording');
@@ -623,7 +574,6 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
       setIsRecording(false);
       setIsProcessing(false);
       setError(err);
-      stopDotAnimation();
       
       // Alert the user about the error
       Alert.alert('Recording Error', err.message, [
@@ -659,7 +609,6 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
     try {
       addLog('Manually stopping recording...');
       setIsRecording(false);
-      stopDotAnimation();
       
       // For compatibility with old VoiceStateManager
       VoiceStateManager.setState(VoiceState.PROCESSING);
@@ -740,69 +689,6 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
         }
       ]
     );
-  };
-
-  const startDotAnimation = () => {
-    dot1Animation.setValue(0);
-    dot2Animation.setValue(0);
-    dot3Animation.setValue(0);
-    
-    Animated.sequence([
-      Animated.timing(dot1Animation, {
-        toValue: 1,
-        duration: 400,
-        useNativeDriver: true
-      }),
-      Animated.timing(dot2Animation, {
-        toValue: 1,
-        duration: 400,
-        useNativeDriver: true
-      }),
-      Animated.timing(dot3Animation, {
-        toValue: 1,
-        duration: 400,
-        useNativeDriver: true
-      })
-    ]).start(() => {
-      if (isRecording) {
-        startDotAnimation();
-      }
-    });
-  };
-
-  const stopDotAnimation = () => {
-    dot1Animation.stopAnimation();
-    dot2Animation.stopAnimation();
-    dot3Animation.stopAnimation();
-  };
-
-  // Start waveform animation
-  const startWaveformAnimation = () => {
-    // Create separate animation for each bar
-    waveforms.forEach((anim, index) => {
-      const randomDuration = 700 + Math.random() * 500;
-      const randomHeight = 0.3 + Math.random() * 0.7;
-      
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(anim, {
-            toValue: randomHeight,
-            duration: randomDuration,
-            useNativeDriver: false,
-          }),
-          Animated.timing(anim, {
-            toValue: 0.3,
-            duration: randomDuration,
-            useNativeDriver: false,
-          }),
-        ])
-      ).start();
-    });
-  };
-
-  // Stop waveform animation
-  const stopWaveformAnimation = () => {
-    waveforms.forEach(anim => anim.stopAnimation());
   };
 
   const reconnect = async () => {
@@ -899,20 +785,12 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
   useEffect(() => {
     if (isRecording) {
       stopButtonPulse();
-      startDotAnimation();
-      stopWaveformAnimation();
     } else if (isPlaying) {
       startButtonPulse();
-      stopDotAnimation();
-      startWaveformAnimation();
     } else if (isProcessing) {
       startButtonPulse();
-      stopDotAnimation();
-      stopWaveformAnimation();
     } else {
       stopButtonPulse();
-      stopDotAnimation();
-      stopWaveformAnimation();
     }
   }, [isRecording, isPlaying, isProcessing]);
 
@@ -970,9 +848,6 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
       // Reset processing state now that we're playing
       setIsProcessing(false);
       
-      // Start waveform animation when playing
-      startWaveformAnimation();
-      
       // Handle playback status updates
       sound.setOnPlaybackStatusUpdate((status) => {
         if ('didJustFinish' in status && status.didJustFinish) {
@@ -980,7 +855,6 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
           // Ensure processing state is false when finished
           setIsProcessing(false);
           addLog('Audio response playback finished');
-          stopWaveformAnimation();
           
           // For compatibility with old VoiceStateManager
           VoiceStateManager.setState(VoiceState.IDLE);
@@ -1065,7 +939,6 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
       setIsPlaying(false);
       // Ensure processing state is reset on error
       setIsProcessing(false);
-      stopWaveformAnimation();
       
       // Reset VoiceStateManager state
       VoiceStateManager.setState(VoiceState.IDLE);
@@ -1143,7 +1016,6 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
         await responseSound.current.stopAsync();
         addLog('Audio playback stopped');
         setIsPlaying(false);
-        stopWaveformAnimation();
       } catch (error) {
         const err = error as Error;
         addLog(`Error stopping playback: ${err.message}`);
@@ -1274,11 +1146,7 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
         {isRecording && (
           <View style={styles.assistantStatusContainer}>
               <Text style={styles.assistantStatusText}>Listening...</Text>
-              <View style={styles.listeningIndicator}>
-                <Animated.View style={[styles.dot, dot1Style]} />
-                <Animated.View style={[styles.dot, dot2Style]} />
-                <Animated.View style={[styles.dot, dot3Style]} />
-              </View>
+              <ActivityIndicator size="small" color="#8189E3" style={styles.processingIndicator} />
           </View>
         )}
         
@@ -1294,22 +1162,7 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
         {isPlaying && (
           <View style={styles.assistantStatusContainer}>
               <Text style={styles.assistantStatusText}>Playing response...</Text>
-              <View style={styles.waveformContainer}>
-                {waveforms.map((anim, index) => (
-                  <Animated.View
-                    key={index}
-                    style={[
-                      styles.waveformBar,
-                      {
-                        height: anim.interpolate({
-                          inputRange: [0, 1],
-                          outputRange: [5, 40],
-                        }),
-                      },
-                    ]}
-                  />
-                ))}
-              </View>
+              <ActivityIndicator size="small" color="#8189E3" style={styles.processingIndicator} />
           </View>
         )}
       </View>
@@ -1490,13 +1343,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginTop: 12,
   },
-  dot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: '#8189E3',
-    margin: 5,
-    opacity: 0.6,
+  processingIndicator: {
+    marginTop: 8,
   },
   bottomButtons: {
     gap: 12,
@@ -1664,9 +1512,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#8189E3',
     marginHorizontal: 2,
     borderRadius: 2,
-  },
-  processingIndicator: {
-    marginTop: 8,
   },
   connectionAlert: {
     backgroundColor: '#FF6B6B',
