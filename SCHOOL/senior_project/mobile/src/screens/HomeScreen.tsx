@@ -6,7 +6,9 @@ import { Audio } from 'expo-av';
 import VoiceStateManager, { VoiceState } from '../services/VoiceStateManager';
 import APIService, { WS_EVENTS } from '../services/APIService';
 import AudioRecordingService from '../services/AudioRecordingService';
+import SessionStorageService from '../services/SessionStorageService';
 import * as FileSystem from 'expo-file-system';
+import { Session, Message as SessionMessage } from '../types/SessionTypes';
 
 // Types
 type Message = {
@@ -93,6 +95,17 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
   const [processingStartTime, setProcessingStartTime] = useState<number | null>(null);
   const MAX_PROCESSING_TIME = 30000; // 30 seconds max for processing
   
+  // Add a state to track whether current conversation has been saved
+  const [conversationSaved, setConversationSaved] = useState(false);
+  
+  // Add a ref to track the saved state for unmount handling
+  const conversationSavedRef = useRef(false);
+  
+  // Keep the ref in sync with the state
+  useEffect(() => {
+    conversationSavedRef.current = conversationSaved;
+  }, [conversationSaved]);
+
   // Add log function
   const addLog = (message: string) => {
     const timestamp = new Date().toLocaleTimeString();
@@ -235,6 +248,9 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
       APIService.on('audio_received', (data: AudioReceivedData) => {
         addLog(`Audio received: ${data.message}, size: ${data.chunk_size}KB`);
       });
+      
+      // Register for error events
+      APIService.on('error', handleError);
       
       // Connect to the server
       APIService.connect();
@@ -532,8 +548,8 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
       // Configure silence detection before starting
       AudioRecordingService.configureSilenceDetection(
         silenceDetectionEnabled, 
-        -30, 
-        silenceThreshold
+        -50,  // Much more lenient threshold
+        5000  // Much longer silence duration (5 seconds)
       );
       
       // Try multiple times to start recording if needed
@@ -671,24 +687,78 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
   };
 
   const clearConversationHistory = () => {
-    Alert.alert(
-      "Clear Conversation History",
-      "Are you sure you want to clear all conversation history?",
-      [
-        {
-          text: "Cancel",
-          style: "cancel"
-        },
-        {
-          text: "Clear",
-          style: "destructive",
-          onPress: () => {
-            setConversationHistory([]);
-            addLog('Conversation history cleared');
+    // If there are messages and they haven't been saved, ask about saving
+    if (conversationHistory.length > 0 && !conversationSaved) {
+      Alert.alert(
+        "Save Conversation?",
+        "Would you like to save this conversation before clearing it?",
+        [
+          {
+            text: "Don't Save",
+            style: "destructive",
+            onPress: () => {
+              setConversationHistory([]);
+              // This is a new conversation, so reset the saved flag
+              setConversationSaved(false);
+              console.log('Conversation history cleared without saving');
+            }
+          },
+          {
+            text: "Save",
+            onPress: async () => {
+              const sessionId = await saveConversationAsSession();
+              setConversationHistory([]);
+              // This is a new conversation, so reset the saved flag
+              setConversationSaved(false);
+              console.log('Conversation saved and history cleared');
+              
+              // Notify the user
+              if (sessionId) {
+                Alert.alert(
+                  "Conversation Saved",
+                  "Your conversation has been saved and can be accessed from the Sessions screen.",
+                  [
+                    {
+                      text: "View Sessions",
+                      onPress: () => navigation.navigate('Sessions')
+                    },
+                    {
+                      text: "OK",
+                    }
+                  ]
+                );
+              }
+            }
+          },
+          {
+            text: "Cancel",
+            style: "cancel"
           }
-        }
-      ]
-    );
+        ]
+      );
+    } else {
+      // If no messages or already saved, just clear
+      Alert.alert(
+        "Clear Conversation History",
+        "Are you sure you want to clear all conversation history?",
+        [
+          {
+            text: "Cancel",
+            style: "cancel"
+          },
+          {
+            text: "Clear",
+            style: "destructive",
+            onPress: () => {
+              setConversationHistory([]);
+              // This is a new conversation, so reset the saved flag
+              setConversationSaved(false);
+              console.log('Conversation history cleared');
+            }
+          }
+        ]
+      );
+    }
   };
 
   const reconnect = async () => {
@@ -728,27 +798,40 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
     buttonPulseAnimation.setValue(1);
   };
 
-  // Handle panic button press
+  // Handle panic button press - save when stopping a conversation
   const handlePanicButtonPress = async () => {
     try {
-      if (isPlaying) {
-        // Stop audio playback
-        await stopPlayback();
-        // Also reset the continuous conversation state
-        addLog('Conversation cycle ended by user');
-        setIsContinuousMode(false);
-      } else if (isRecording) {
-        // Stop recording
-        await stopRecording();
-        // Also reset the continuous conversation state
-        addLog('Conversation cycle ended by user');
-        setIsContinuousMode(false);
+      if (isRecording || isPlaying) {
+        // Stop any ongoing activities
+        if (isPlaying) {
+          await stopPlayback();
+        }
+        
+        if (isRecording) {
+          await stopRecording();
+        }
+        
+        // Exit continuous mode - this marks the end of a conversation
+        if (isContinuousMode) {
+          setIsContinuousMode(false);
+          // Only try to save when we're completely ending the conversation
+          await saveConversationAsSession();
+        }
       } else if (isProcessing) {
         // Do nothing, wait for processing to complete
-        addLog('Processing in progress, please wait...');
+        console.log('Processing in progress, please wait...');
       } else {
+        // Starting a new conversation
+        if (conversationHistory.length > 0) {
+          // If we have a previous conversation, save it first
+          await saveConversationAsSession();
+          
+          // Then clear for a new conversation
+          setConversationHistory([]);
+          setConversationSaved(false);
+        }
+        
         // Start recording and continuous conversation mode
-        addLog('Starting continuous conversation mode');
         setIsContinuousMode(true);
         await startRecording();
       }
@@ -802,8 +885,12 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
       isUser,
       hasAudio: !!audio,
       audio,
-      timestamp: new Date().toLocaleTimeString()
+      timestamp: new Date().toISOString()
     };
+    
+    // DO NOT reset the saved flag on every message - this was causing multiple sessions
+    // Only reset the saved flag when starting a new conversation, which is handled elsewhere
+    
     setConversationHistory(prev => [...prev, newMessage]);
   };
   
@@ -1081,6 +1168,127 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
     };
   }, [isProcessing, processingStartTime, isContinuousMode]);
 
+  // Handle error events from the server
+  const handleError = (data: { message?: string; type?: string }) => {
+    // Suppress the specific "No chunk info received before chunk data" error
+    if (data.message && data.message.includes('No chunk info received before chunk data')) {
+      addLog('Suppressed chunk info error (non-critical)');
+      return;
+    }
+    
+    addLog(`Server error: ${data.message}`);
+    console.error('Server error:', data);
+    
+    // Handle specific error types
+    if (data.type === 'network_error') {
+      addLog('Network error detected, attempting to reconnect...');
+      setIsConnected(false);
+      APIService.connect();
+    } else if (data.type === 'authentication_error') {
+      addLog('Authentication error, please reconnect');
+      setIsConnected(false);
+    } else if (data.type === 'rate_limit_error') {
+      addLog('Rate limit exceeded, please wait before trying again');
+    } else if (data.type === 'api_error') {
+      addLog('API error, please try again later');
+    } else if (data.type === 'processing_error') {
+      addLog('Processing error, please try again');
+    } else if (data.type === 'validation_error') {
+      // Only show validation errors that aren't the chunk info error
+      if (!data.message || !data.message.includes('No chunk info received before chunk data')) {
+        addLog(`Validation error: ${data.message}`);
+      }
+    }
+  };
+
+  // Save current conversation as a session - this is the ONLY function that should save a session
+  const saveConversationAsSession = async () => {
+    try {
+      // 1. Check if there's anything to save
+      if (conversationHistory.length < 2) {
+        console.log('Not saving - conversation too short');
+        return null;
+      }
+
+      // 2. Check if it's already been saved
+      if (conversationSaved) {
+        console.log('Not saving - conversation already saved');
+        return null;
+      }
+
+      // 3. Check if we have both user and assistant messages
+      const hasUserMessage = conversationHistory.some(msg => msg.isUser);
+      const hasAssistantMessage = conversationHistory.some(msg => !msg.isUser);
+      
+      if (!hasUserMessage || !hasAssistantMessage) {
+        console.log('Not saving - incomplete conversation (missing user or assistant message)');
+        return null;
+      }
+
+      console.log(`Saving conversation with ${conversationHistory.length} messages`);
+
+      // 4. Create the session object
+      const startTime = conversationHistory[0].timestamp;
+      const endTime = new Date().toISOString();
+      
+      const start = new Date(startTime).getTime();
+      const end = new Date(endTime).getTime();
+      const durationSeconds = Math.floor((end - start) / 1000);
+      
+      const sessionMessages = conversationHistory.map(msg => ({
+        role: msg.isUser ? 'user' as const : 'assistant' as const,
+        content: msg.text,
+        timestamp: msg.timestamp
+      }));
+      
+      const firstUserMessage = conversationHistory.find(msg => msg.isUser);
+      const title = firstUserMessage 
+        ? firstUserMessage.text.substring(0, 50) + (firstUserMessage.text.length > 50 ? '...' : '')
+        : 'Untitled Session';
+      
+      const session = {
+        id: Date.now().toString(),
+        title,
+        startTime,
+        endTime,
+        duration: durationSeconds,
+        messages: sessionMessages,
+        isArchived: false,
+        lastModified: new Date().toISOString()
+      };
+      
+      // 5. Save to storage
+      await SessionStorageService.saveSession(session);
+      console.log(`Session saved with ID: ${session.id}`);
+      
+      // 6. Mark as saved
+      setConversationSaved(true);
+      
+      return session.id;
+    } catch (error) {
+      console.error('Error saving session:', error);
+      return null;
+    }
+  };
+
+  // REMOVE ALL OTHER SESSION SAVING LOGIC
+  //---------------------------------------------
+  // Remove the save-on-unmount effect - we'll handle this in one place instead
+  useEffect(() => {
+    // Keep the ref in sync with state for unmount handling
+    conversationSavedRef.current = conversationSaved;
+  }, [conversationSaved]);
+
+  // Much simpler clean-up on unmount
+  useEffect(() => {
+    return () => {
+      // Save on unmount if needed and possible
+      if (!conversationSavedRef.current) {
+        saveConversationAsSession();
+      }
+    };
+  }, []);
+
   if (!appReady || isConnecting) {
     return (
       <View style={styles.container}>
@@ -1223,17 +1431,53 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
                         )}
                       </View>
                       <Text style={styles.messageText}>{message.text}</Text>
-                      <Text style={styles.messageTimestamp}>{message.timestamp}</Text>
+                      <Text style={styles.messageTimestamp}>
+                        {new Date(message.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                      </Text>
                     </TouchableOpacity>
                   ))}
                 </ScrollView>
                 
-                <TouchableOpacity 
-                  style={styles.clearButton}
-                  onPress={clearConversationHistory}
-                >
-                  <Text style={styles.clearButtonText}>Clear History</Text>
-                </TouchableOpacity>
+                <View style={styles.historyButtonsContainer}>
+                  <TouchableOpacity 
+                    style={[
+                      styles.historyButton, 
+                      styles.saveButton,
+                      conversationSaved ? styles.disabledButton : null
+                    ]}
+                    disabled={conversationSaved}
+                    onPress={async () => {
+                      const sessionId = await saveConversationAsSession();
+                      if (sessionId) {
+                        setShowHistory(false);
+                        Alert.alert(
+                          "Conversation Saved",
+                          "Your conversation has been saved and can be accessed from the Sessions screen.",
+                          [
+                            {
+                              text: "View Sessions",
+                              onPress: () => navigation.navigate('Sessions')
+                            },
+                            {
+                              text: "OK",
+                            }
+                          ]
+                        );
+                      }
+                    }}
+                  >
+                    <Text style={styles.historyButtonText}>
+                      {conversationSaved ? 'Already Saved' : 'Save Session'}
+                    </Text>
+                  </TouchableOpacity>
+                  
+                  <TouchableOpacity 
+                    style={[styles.historyButton, styles.clearButton]}
+                    onPress={clearConversationHistory}
+                  >
+                    <Text style={styles.historyButtonText}>Clear History</Text>
+                  </TouchableOpacity>
+                </View>
               </>
             )}
             <TouchableOpacity 
@@ -1408,8 +1652,7 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   buttonText: {
-    color: 'white',
-    fontSize: 16,
+    color: '#333333',
     fontWeight: 'bold',
   },
   modalContainer: {
@@ -1479,19 +1722,11 @@ const styles = StyleSheet.create({
     lineHeight: 22,
   },
   closeButton: {
-    backgroundColor: '#8189E3',
-    padding: 15,
-    borderRadius: 12,
-    marginTop: 15,
+    backgroundColor: '#f0f4f9',
+    padding: 12,
+    borderRadius: 8,
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 3,
-    elevation: 2,
+    marginTop: 10
   },
   continuousModeIndicator: {
     color: '#8189E3',
@@ -1548,17 +1783,27 @@ const styles = StyleSheet.create({
     marginTop: 5,
     alignSelf: 'flex-end',
   },
-  clearButton: {
-    marginTop: 15,
-    padding: 10,
-    alignItems: 'center',
-    backgroundColor: '#f8f8f8',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#FF6B6B',
+  historyButtonsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 16,
+    marginBottom: 16,
+    gap: 10,
   },
-  clearButtonText: {
-    color: '#FF6B6B',
+  historyButton: {
+    flex: 1,
+    padding: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  saveButton: {
+    backgroundColor: '#8189E3',
+  },
+  clearButton: {
+    backgroundColor: '#FF6B6B',
+  },
+  historyButtonText: {
+    color: '#FFFFFF',
     fontWeight: 'bold',
     fontSize: 14,
   },
@@ -1571,5 +1816,9 @@ const styles = StyleSheet.create({
   audioIndicator: {
     fontSize: 12,
     color: '#8189E3',
+  },
+  disabledButton: {
+    backgroundColor: '#cccccc',
+    opacity: 0.7
   },
 }); 

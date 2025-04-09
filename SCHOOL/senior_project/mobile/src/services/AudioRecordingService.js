@@ -8,8 +8,8 @@ class AudioRecordingService {
     
     // Silence detection parameters
     this.silenceDetectionEnabled = true;
-    this.silenceThresholdDb = -30; // dB threshold for silence (adjust as needed)
-    this.silenceTimeThreshold = 2000; // 2 seconds of silence before stopping
+    this.silenceThresholdDb = -50; // dB threshold for silence (much more lenient)
+    this.silenceTimeThreshold = 5000; // 5 seconds of silence before stopping
     this.silenceDetectionStartTime = null;
     this.statusUpdateInterval = null;
     this.onSilenceDetected = null;
@@ -237,22 +237,53 @@ class AudioRecordingService {
         console.error('[AudioRecordingService] Error getting status:', statusError);
       }
       
-      await this.recording.stopAndUnloadAsync();
-      
-      // Get the recording URI
-      const uri = this.recording.getURI();
-      console.log(`[AudioRecordingService] Recording saved to: ${uri}`);
-      
-      // Clean up
+      // Store the recording object before stopping
       const recordingObject = this.recording;
-      this.recording = null;
-      this.silenceDetectionStartTime = null;
       
-      return {
-        uri,
-        recording: recordingObject,
-        duration: recordingDuration
-      };
+      try {
+        await this.recording.stopAndUnloadAsync();
+        
+        // Get the recording URI
+        const uri = recordingObject.getURI();
+        console.log(`[AudioRecordingService] Recording saved to: ${uri}`);
+        
+        // Clean up
+        this.recording = null;
+        this.silenceDetectionStartTime = null;
+        
+        return {
+          uri,
+          recording: recordingObject,
+          duration: recordingDuration
+        };
+      } catch (stopError) {
+        // If we get the "Recorder does not exist" error, just log it and continue
+        if (stopError.message && stopError.message.includes('Recorder does not exist')) {
+          console.log('[AudioRecordingService] Recorder already stopped, continuing...');
+          
+          // Try to get the URI anyway
+          try {
+            const uri = recordingObject.getURI();
+            console.log(`[AudioRecordingService] Recording saved to: ${uri}`);
+            
+            // Clean up
+            this.recording = null;
+            this.silenceDetectionStartTime = null;
+            
+            return {
+              uri,
+              recording: recordingObject,
+              duration: recordingDuration
+            };
+          } catch (uriError) {
+            console.log('[AudioRecordingService] Could not get URI from stopped recorder');
+            return null;
+          }
+        } else {
+          // For other errors, rethrow
+          throw stopError;
+        }
+      }
     } catch (error) {
       console.error('[AudioRecordingService] Error stopping recording:', error);
       this.recording = null;

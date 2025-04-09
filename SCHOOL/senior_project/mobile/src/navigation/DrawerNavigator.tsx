@@ -1,7 +1,7 @@
 import React from 'react';
 import { createDrawerNavigator } from '@react-navigation/drawer';
 import HomeScreen from '../screens/HomeScreen';
-import { SessionsScreen } from '../screens/SessionsScreen';
+import { SessionsNavigator } from './SessionsNavigator';
 import { MeditateScreen } from '../screens/MeditateScreen';
 import { BreathingScreen } from '../screens/BreathingScreen';
 import { GroundingScreen } from '../screens/GroundingScreen';
@@ -39,7 +39,7 @@ export const DrawerNavigator = () => {
       />
       <Drawer.Screen 
         name="Sessions" 
-        component={SessionsScreen}
+        component={SessionsNavigator}
         options={{
           drawerLabel: 'Sessions',
         }}

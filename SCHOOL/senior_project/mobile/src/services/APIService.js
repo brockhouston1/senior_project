@@ -245,6 +245,12 @@ class APIService {
     
     // Error events
     this.socket.on('error_message', (data) => {
+      // Suppress the specific "No chunk info received before chunk data" error
+      if (data.message && data.message.includes('No chunk info received before chunk data')) {
+        console.log('[APIService] Suppressed chunk info error (non-critical)');
+        return;
+      }
+      
       console.error('[APIService] Error from server:', data.message);
       this.emitEvent(WS_EVENTS.ERROR, new Error(data.message));
     });
