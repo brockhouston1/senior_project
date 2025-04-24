@@ -24,7 +24,7 @@ else:
 client = OpenAI(api_key=openai_api_key)
 
 # Define constants
-CHAT_MODEL = "gpt-4o-mini"  # Using GPT-4o mini for faster, cost-effective responses
+CHAT_MODEL = "gpt-4.1-2025-04-14"  # Using GPT-4o mini for faster, cost-effective responses
 TTS_MODEL = "tts-1"
 TTS_DEFAULT_VOICE = "alloy"  # Available voices: alloy, echo, fable, onyx, nova, shimmer
 WHISPER_MODEL = "whisper-1"
