@@ -1,0 +1,629 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>momento. - Intentional Boredom</title>
+    <link rel="icon" type="image/x-icon" href="favicon.ico">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #121212;
+            color: #FFFFFF;
+            line-height: 1.6;
+            overflow-x: hidden;
+        }
+
+        /* SF Font Headers */
+        h1, h2, h3, h4, h5, h6, .logo, .section-title, .feature-title, .philosophy-title, .cta-title {
+            font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, sans-serif;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+        }
+
+        /* Glassmorphism utility classes */
+        .glass {
+            background: rgba(40, 40, 40, 0.8);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(80, 80, 80, 0.3);
+            border-radius: 20px;
+        }
+
+        .glass-highlight {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        /* Hero Section */
+        .hero {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 2rem;
+            position: relative;
+            background: radial-gradient(ellipse at center, rgba(99, 102, 241, 0.1) 0%, #121212 70%);
+        }
+
+        .hero::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1000"><defs><radialGradient id="grain"><stop offset="0%" style="stop-color:white;stop-opacity:0.03"/><stop offset="100%" style="stop-color:white;stop-opacity:0"/></radialGradient></defs><rect width="100%" height="100%" fill="url(%23grain)"/></svg>');
+            pointer-events: none;
+        }
+
+        .logo {
+            font-size: 4rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+            letter-spacing: -0.03em;
+        }
+
+        .tagline {
+            font-size: 1.5rem;
+            color: #D0D0D0;
+            margin-bottom: 0.5rem;
+            font-weight: 600;
+            letter-spacing: -0.01em;
+        }
+
+        .subtitle {
+            font-size: 1.2rem;
+            color: #A0A0A0;
+            margin-bottom: 3rem;
+            max-width: 600px;
+            font-weight: 500;
+            line-height: 1.5;
+        }
+
+        /* App Screenshots */
+        .app-showcase {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 3rem;
+            margin: 3rem auto;
+            flex-wrap: wrap;
+        }
+
+        .phone-mockup {
+            width: 280px;
+            height: auto;
+            position: relative;
+            transition: transform 0.3s ease;
+        }
+
+        .phone-mockup:hover {
+            transform: translateY(-10px);
+        }
+
+        .phone-mockup img {
+            width: 100%;
+            height: auto;
+            border-radius: 40px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+            border: 2px solid rgba(80, 80, 80, 0.3);
+        }
+
+        .screenshot-label {
+            text-align: center;
+            margin-top: 1rem;
+            color: #A0A0A0;
+            font-size: 0.9rem;
+        }
+
+        /* Features Section */
+        .features {
+            padding: 6rem 2rem;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .section-title {
+            text-align: center;
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 3rem;
+            color: #FFFFFF;
+        }
+
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 2rem;
+            margin-top: 4rem;
+        }
+
+        .feature-card {
+            padding: 3rem 2rem;
+            text-align: center;
+            border-radius: 24px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .feature-card.focus {
+            background: linear-gradient(135deg, rgba(59, 130, 246, 0.15) 0%, rgba(15, 23, 42, 0.8) 100%);
+            border: 1px solid rgba(59, 130, 246, 0.3);
+        }
+
+        .feature-card.calm {
+            background: linear-gradient(135deg, rgba(34, 197, 94, 0.15) 0%, rgba(13, 17, 23, 0.8) 100%);
+            border: 1px solid rgba(34, 197, 94, 0.3);
+        }
+
+        .feature-card.deep-rest {
+            background: linear-gradient(135deg, rgba(139, 92, 246, 0.15) 0%, rgba(30, 27, 75, 0.8) 100%);
+            border: 1px solid rgba(139, 92, 246, 0.3);
+        }
+
+        .feature-title {
+            font-size: 2rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+        }
+
+        .feature-description {
+            color: #D0D0D0;
+            margin-bottom: 1rem;
+            font-weight: 500;
+            font-size: 1.1rem;
+        }
+
+        .feature-frequency {
+            color: #A0A0A0;
+            font-size: 0.95rem;
+            font-weight: 500;
+        }
+
+        .feature-duration {
+            background: rgba(0, 0, 0, 0.4);
+            padding: 0.5rem 1rem;
+            border-radius: 20px;
+            display: inline-block;
+            margin-top: 1rem;
+            font-size: 0.9rem;
+            font-weight: 600;
+        }
+
+        /* Philosophy Section */
+        .philosophy {
+            padding: 6rem 2rem;
+            background: rgba(30, 30, 30, 0.3);
+        }
+
+        .philosophy-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 4rem;
+            align-items: center;
+        }
+
+        .philosophy-content {
+            text-align: left;
+        }
+
+        .philosophy-title {
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 2rem;
+        }
+
+        .philosophy-text {
+            font-size: 1.3rem;
+            color: #D0D0D0;
+            margin-bottom: 2rem;
+            line-height: 1.7;
+            font-weight: 500;
+        }
+
+        .philosophy-features {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.5rem;
+            margin-top: 2rem;
+        }
+
+        .philosophy-feature {
+            padding: 1.5rem;
+            background: rgba(40, 40, 40, 0.6);
+            border-radius: 16px;
+            border: 1px solid rgba(80, 80, 80, 0.2);
+        }
+
+        .philosophy-feature h4 {
+            font-weight: 700;
+            font-size: 1.1rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .philosophy-feature p {
+            font-weight: 500;
+            color: #D0D0D0;
+        }
+
+        /* Interactive Card Cycling */
+        .interactive-showcase {
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .card-container {
+            position: relative;
+            width: 320px;
+            height: 200px;
+            margin-bottom: 2rem;
+        }
+
+        .interactive-card {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            padding: 2rem;
+            border-radius: 24px;
+            opacity: 0;
+            transform: translateY(20px);
+            transition: all 0.5s ease;
+            cursor: pointer;
+        }
+
+        .interactive-card.active {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .interactive-card.feature-card-1 {
+            background: linear-gradient(135deg, rgba(99, 102, 241, 0.2) 0%, rgba(30, 30, 30, 0.9) 100%);
+            border: 2px solid rgba(99, 102, 241, 0.4);
+        }
+
+        .interactive-card.feature-card-2 {
+            background: linear-gradient(135deg, rgba(59, 130, 246, 0.2) 0%, rgba(30, 30, 30, 0.9) 100%);
+            border: 2px solid rgba(59, 130, 246, 0.4);
+        }
+
+        .interactive-card.feature-card-3 {
+            background: linear-gradient(135deg, rgba(34, 197, 94, 0.2) 0%, rgba(30, 30, 30, 0.9) 100%);
+            border: 2px solid rgba(34, 197, 94, 0.4);
+        }
+
+        .interactive-card.feature-card-4 {
+            background: linear-gradient(135deg, rgba(139, 92, 246, 0.2) 0%, rgba(30, 30, 30, 0.9) 100%);
+            border: 2px solid rgba(139, 92, 246, 0.4);
+        }
+
+        .card-title {
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+        }
+
+        .card-description {
+            font-size: 1rem;
+            color: #D0D0D0;
+            margin-bottom: 1rem;
+            font-weight: 500;
+        }
+
+        .card-frequency {
+            font-size: 0.9rem;
+            color: #A0A0A0;
+            font-weight: 500;
+        }
+
+        /* Navigation Dots */
+        .nav-dots {
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+        }
+
+        .nav-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.3);
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .nav-dot.active {
+            background: #6366F1;
+            transform: scale(1.2);
+        }
+
+        .nav-dot:hover {
+            background: rgba(255, 255, 255, 0.5);
+        }
+
+
+
+        /* CTA Section */
+        .cta {
+            padding: 6rem 2rem;
+            text-align: center;
+            background: radial-gradient(ellipse at center, rgba(99, 102, 241, 0.1) 0%, transparent 70%);
+        }
+
+        .cta-title {
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 2rem;
+            text-align: center;
+        }
+
+        .cta .subtitle {
+            text-align: center;
+            margin: 0 auto 2rem auto;
+        }
+
+        .download-button {
+            background: linear-gradient(135deg, #6366F1 0%, #3B82F6 100%);
+            color: white;
+            padding: 1rem 3rem;
+            border: none;
+            border-radius: 50px;
+            font-size: 1.1rem;
+            font-weight: 700;
+            cursor: pointer;
+            margin: 1rem;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: inline-block;
+            letter-spacing: -0.01em;
+        }
+
+        .download-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(99, 102, 241, 0.3);
+        }
+
+        /* Footer */
+        .footer {
+            padding: 3rem 2rem;
+            text-align: center;
+            border-top: 1px solid rgba(80, 80, 80, 0.3);
+            color: #A0A0A0;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .logo {
+                font-size: 3rem;
+            }
+            
+            .section-title {
+                font-size: 2rem;
+            }
+            
+            .features-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .phone-mockup {
+                width: 240px;
+                height: auto;
+            }
+            
+            .app-showcase {
+                flex-direction: column;
+                gap: 2rem;
+            }
+            
+            .philosophy-container {
+                grid-template-columns: 1fr;
+                gap: 3rem;
+                text-align: center;
+            }
+            
+            .philosophy-content {
+                text-align: center;
+            }
+            
+            .philosophy-features {
+                grid-template-columns: 1fr;
+            }
+            
+            .card-container {
+                width: 280px;
+                height: 180px;
+            }
+            
+
+        }
+    </style>
+</head>
+<body>
+    <!-- Hero Section -->
+    <section class="hero">
+        <h1 class="logo">momento.</h1>
+        <p class="tagline">Intentional Boredom</p>
+        <p class="subtitle">Take back your attention and embrace the pause. A meditation app designed for the modern mind seeking simplicity.</p>
+        
+        <!-- Hero CTA -->
+        <div style="margin: 2rem 0 3rem 0;">
+            <a href="#" class="download-button">Download for iOS</a>
+            <a href="#" class="download-button" style="background: linear-gradient(135deg, #10B981 0%, #059669 100%);">Download for Android</a>
+        </div>
+        
+        <!-- App Screenshots -->
+        <div class="app-showcase">
+            <div class="phone-mockup">
+                <img src="IMG_4139.PNG" alt="Momento app statistics and progress tracking">
+                <div class="screenshot-label">Choose Your Mode</div>
+            </div>
+            <div class="phone-mockup">
+                <img src="IMG_4140.PNG" alt="Momento app main screen showing meditation categories">
+                <div class="screenshot-label">Track Your Journey</div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Features Section -->
+    <section class="features">
+        <h2 class="section-title">Three Modes of Mindfulness</h2>
+        <div class="features-grid">
+            <div class="feature-card focus">
+                <h3 class="feature-title">Focus</h3>
+                <p class="feature-description">Enhanced concentration & clarity</p>
+                <p class="feature-frequency">Alpha waves - 10Hz</p>
+                <div class="feature-duration">5, 10, 20 min</div>
+            </div>
+            
+            <div class="feature-card calm">
+                <h3 class="feature-title">Calm</h3>
+                <p class="feature-description">Anxiety relief & stress reduction</p>
+                <p class="feature-frequency">Theta waves - 6Hz</p>
+                <div class="feature-duration">5, 10, 20 min</div>
+            </div>
+            
+            <div class="feature-card deep-rest">
+                <h3 class="feature-title">Deep Rest</h3>
+                <p class="feature-description">Sleep preparation & deep relaxation</p>
+                <p class="feature-frequency">Delta waves - 3Hz</p>
+                <div class="feature-duration">5, 10, 20 min</div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Philosophy Section -->
+    <section class="philosophy">
+        <div class="philosophy-container">
+            <div class="philosophy-content">
+                <h2 class="philosophy-title">Embrace the Pause</h2>
+                <p class="philosophy-text">
+                    In a world of constant stimulation, momento offers something radical: intentional boredom. 
+                    No notifications, no tracking, no social features. Just you, your breath, and the science of sound.
+                </p>
+
+                
+
+            </div>
+            
+            <div class="interactive-showcase">
+                <div class="card-container">
+                    <div class="interactive-card feature-card-1 active">
+                        <div class="card-title">📱 Fully Offline</div>
+                        <div class="card-description">No internet required. Your practice, your privacy.</div>
+                    </div>
+                    <div class="interactive-card feature-card-2">
+                        <div class="card-title">🔕 Zero Notifications</div>
+                        <div class="card-description">We won't interrupt your day. You choose when to practice.</div>
+                    </div>
+                    <div class="interactive-card feature-card-3">
+                        <div class="card-title">🎯 Intentionally Simple</div>
+                        <div class="card-description">Three modes, clear purpose. No complexity, just clarity.</div>
+                    </div>
+                    <div class="interactive-card feature-card-4">
+                        <div class="card-title">🧠 Science-Backed</div>
+                        <div class="card-description">Binaural beats tuned to specific brainwave frequencies.</div>
+                    </div>
+                </div>
+                
+                <div class="nav-dots">
+                    <div class="nav-dot active" data-card="0"></div>
+                    <div class="nav-dot" data-card="1"></div>
+                    <div class="nav-dot" data-card="2"></div>
+                    <div class="nav-dot" data-card="3"></div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+
+
+    <!-- CTA Section -->
+    <section class="cta">
+        <h2 class="cta-title">Start Your Journey</h2>
+        <p class="subtitle">
+            Available now. Simple, intentional, yours.
+        </p>
+        
+        <a href="#" class="download-button">Download for iOS</a>
+        <a href="#" class="download-button" style="background: linear-gradient(135deg, #10B981 0%, #059669 100%);">Download for Android</a>
+    </section>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <p>&copy; 2025 momento. Made with intention.</p>
+        <p style="margin-top: 1rem; font-size: 0.9rem;">
+            <a href="privacy-policy.html" style="color: #A0A0A0; text-decoration: none; margin: 0 1rem;">Privacy Policy</a>
+            <a href="#" style="color: #A0A0A0; text-decoration: none; margin: 0 1rem;">Support</a>
+        </p>
+    </footer>
+
+    <script>
+        // Interactive card cycling functionality
+        let currentCard = 0;
+        const cards = document.querySelectorAll('.interactive-card');
+        const dots = document.querySelectorAll('.nav-dot');
+        
+        function showCard(index) {
+            // Remove active class from all cards and dots
+            cards.forEach(card => card.classList.remove('active'));
+            dots.forEach(dot => dot.classList.remove('active'));
+            
+            // Add active class to current card and dot
+            cards[index].classList.add('active');
+            dots[index].classList.add('active');
+            
+            currentCard = index;
+        }
+        
+        // Auto-cycle through cards
+        function autoRotate() {
+            const nextCard = (currentCard + 1) % cards.length;
+            showCard(nextCard);
+        }
+        
+        // Start auto-rotation
+        let autoRotateInterval = setInterval(autoRotate, 3000);
+        
+        // Add click handlers to dots
+        dots.forEach((dot, index) => {
+            dot.addEventListener('click', () => {
+                showCard(index);
+                // Reset auto-rotation timer
+                clearInterval(autoRotateInterval);
+                autoRotateInterval = setInterval(autoRotate, 3000);
+            });
+        });
+        
+        // Add click handlers to cards
+        cards.forEach((card, index) => {
+            card.addEventListener('click', () => {
+                const nextCard = (index + 1) % cards.length;
+                showCard(nextCard);
+                // Reset auto-rotation timer
+                clearInterval(autoRotateInterval);
+                autoRotateInterval = setInterval(autoRotate, 3000);
+            });
+        });
+        
+        // Pause auto-rotation on hover
+        const cardContainer = document.querySelector('.card-container');
+        cardContainer.addEventListener('mouseenter', () => {
+            clearInterval(autoRotateInterval);
+        });
+        
+        cardContainer.addEventListener('mouseleave', () => {
+            autoRotateInterval = setInterval(autoRotate, 3000);
+        });
+    </script>
+</body>
+</html>
